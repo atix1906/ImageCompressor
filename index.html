@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ImageCompressor — MVP</title>
+  <meta name="description" content="Einfacher, lokaler Bildkompressor (MVP).">
+  <style>
+    :root{--bg:#f7f7f8;--card:#ffffff;--muted:#6b7280;--accent:#111827}
+    *{box-sizing:border-box}
+    body{font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; background:var(--bg); color:var(--accent);}
+    .wrap{max-width:880px;margin:32px auto;padding:20px}
+    header{display:flex;justify-content:space-between;align-items:center}
+    h1{font-size:28px;margin:0}
+    .uploader{margin-top:20px;background:linear-gradient(180deg,#fff,#fbfbfc);border-radius:12px;padding:28px;border:1px solid #e6e7ea}
+    .drop{border:2px dashed #e2e4e8;border-radius:10px;padding:36px;text-align:center;background:#fff}
+    .drop.drag{border-color:#9ca3af}
+    .drop p{margin:8px 0;color:var(--muted)}
+    input[type=file]{display:none}
+    .preview{display:flex;gap:12px;flex-wrap:wrap;margin-top:18px}
+    .card{background:var(--card);border-radius:10px;padding:12px;box-shadow:0 4px 10px rgba(17,24,39,0.04);min-width:220px}
+    img{max-width:100%;height:auto;border-radius:6px}
+    .sizes{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+    .btn{display:inline-block;padding:10px 16px;border-radius:8px;border:0;background:#111827;color:#fff;cursor:pointer}
+    .btn.secondary{background:transparent;color:var(--accent);border:1px solid #e6e7ea}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+    .row{display:flex;gap:12px;align-items:center}
+    @media(max-width:640px){.preview{flex-direction:column}.row{flex-direction:column;align-items:flex-start}}
+    .ad-placeholder{margin-top:12px;padding:12px;border-radius:8px;background:#fff;border:1px dashed #e6e7ea;color:var(--muted);text-align:center}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Image Compressor (MVP)</h1>
+      <nav><a href="#">Login</a> · <a href="#">Sign up</a></nav>
+    </header>
+
+    <section class="uploader">
+      <div id="drop" class="drop">
+        <strong>Bild hierhin ziehen</strong>
+        <p>oder <label for="fileInput" style="color:blue;cursor:pointer">Datei auswählen</label> (max. 3 Bilder gleichzeitig)</p>
+        <input id="fileInput" type="file" accept="image/*" multiple />
+      </div>
+
+      <div class="ad-placeholder" id="adPlaceholder">Werbeplatz: Hier wird später Google AdSense o.ä. eingefügt.</div>
+
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+        <label>Qualität</label>
+        <input id="quality" type="range" min="30" max="95" value="80" />
+        <span id="qualityLabel">80</span>
+        <button id="clearBtn" class="btn secondary" style="margin-left:auto">Alles löschen</button>
+      </div>
+
+      <div class="preview" id="preview"></div>
+
+      <footer>
+        Mit dieser Seite werden Bilder **nur lokal** im Browser verarbeitet — keine Uploads zum Server. Perfekt für schnelle Web-Optimierung.
+      </footer>
+    </section>
+  </div>
+
+  <!-- Bibliothek für Browser-Seitige Kompression. Fingercheck: stelle sicher, dass Version passt.
+       CDN: https://unpkg.com/browser-image-compression/dist/browser-image-compression.js -->
+  <script src="https://unpkg.com/browser-image-compression@1.0.15/dist/browser-image-compression.js"></script>
+
+  <script>
+    // Einfaches, kommentiertes MVP-Skript
+    const drop = document.getElementById('drop');
+    const fileInput = document.getElementById('fileInput');
+    const preview = document.getElementById('preview');
+    const quality = document.getElementById('quality');
+    const qualityLabel = document.getElementById('qualityLabel');
+    const clearBtn = document.getElementById('clearBtn');
+
+    quality.addEventListener('input', ()=> qualityLabel.textContent = quality.value);
+
+    ['dragenter','dragover'].forEach(ev => {
+      drop.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); drop.classList.add('drag'); });
+    });
+    ['dragleave','drop'].forEach(ev => {
+      drop.addEventListener(ev, e => { e.preventDefault(); e.stopPropagation(); drop.classList.remove('drag'); });
+    });
+
+    drop.addEventListener('drop', e => {
+      const dt = e.dataTransfer;
+      if(!dt) return;
+      handleFiles([...dt.files]);
+    });
+
+    fileInput.addEventListener('change', e => handleFiles([...e.target.files]));
+
+    clearBtn.addEventListener('click', ()=>{
+      preview.innerHTML='';
+      fileInput.value = '';
+    });
+
+    async function handleFiles(files){
+      if(!files || files.length===0) return;
+      // Limit für MVP: max 3 Dateien
+      const limited = files.slice(0,3);
+      preview.innerHTML='';
+
+      for(const f of limited){
+        if(!f.type.startsWith('image/')) continue;
+        const container = document.createElement('div'); container.className='card';
+        const img = document.createElement('img'); container.appendChild(img);
+        const name = document.createElement('div'); name.textContent = f.name; name.style.fontWeight='600'; name.style.marginTop='8px'; container.appendChild(name);
+        const sizes = document.createElement('div'); sizes.className='sizes';
+        const orig = document.createElement('div'); orig.innerHTML = `<div style="font-size:13px;color:${getComputedStyle(document.documentElement).getPropertyValue('--muted')}">Original</div><div style="font-weight:700">${formatBytes(f.size)}</div>`;
+        const comp = document.createElement('div'); comp.innerHTML = `<div style="font-size:13px;color:${getComputedStyle(document.documentElement).getPropertyValue('--muted')}">Komprimiert</div><div style="font-weight:700" id="c-${Math.random().toString(36).substr(2,5)}">—</div>`;
+        sizes.appendChild(orig); sizes.appendChild(comp);
+        container.appendChild(sizes);
+
+        const row = document.createElement('div'); row.className='row'; row.style.marginTop='8px';
+        const downloadBtn = document.createElement('button'); downloadBtn.className='btn'; downloadBtn.textContent='Download'; downloadBtn.disabled = true;
+        row.appendChild(downloadBtn);
+        container.appendChild(row);
+
+        preview.appendChild(container);
+
+        // Preview image
+        const url = URL.createObjectURL(f);
+        img.src = url;
+
+        // Komprimieren mit browser-image-compression
+        const options = {
+          maxSizeMB: 2,
+          useWebWorker: true,
+          maxWidthOrHeight: 3840,
+          initialQuality: quality.value/100,
+        };
+
+        try{
+          const compressedFile = await imageCompression(f, options);
+          const compLabel = container.querySelector('div[id^="c-"]');
+          compLabel.textContent = formatBytes(compressedFile.size);
+
+          // Erstelle Download-Link
+          downloadBtn.disabled = false;
+          downloadBtn.addEventListener('click', ()=>{
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(compressedFile);
+            const ext = compressedFile.type.split('/')[1] || 'jpg';
+            link.download = f.name.replace(/\.[^.]+$/, '') + '-compressed.' + ext;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+          });
+
+        }catch(err){
+          console.error('Compression error', err);
+        }
+
+      }
+
+    }
+
+    function formatBytes(bytes, decimals=1){
+      if(bytes===0) return '0 B';
+      const k = 1024; const dm = decimals<0?0:decimals; const sizes = ['B','KB','MB','GB'];
+      const i = Math.floor(Math.log(bytes)/Math.log(k));
+      return parseFloat((bytes/Math.pow(k,i)).toFixed(dm)) + ' ' + sizes[i];
+    }
+
+  </script>
+</body>
+</html>
